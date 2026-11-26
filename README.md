@@ -24,7 +24,8 @@ Your iPhone friends share trip photos in an iCloud Shared Album, but you keep yo
 
 - **Skip your own uploads.** Use `-x "Your Name"`, or set it once with an environment variable.
 - **Uploader in the file name.** Choose from 6 presets or build your own template, including one sub-folder per person.
-- **Metadata left alone.** Files are saved exactly as Apple serves them, so the EXIF data (GPS location, camera, lens, exposure, capture time) stays intact. Each file's modified date is also set to the capture time.
+- **Metadata left alone.** Photos are saved exactly as Apple serves them, so the EXIF data (GPS location, camera, lens, exposure, capture time) stays intact.
+- **Correct dates in Google Photos.** If a photo has no "date taken", the album's capture date is written into it. Videos, which Apple stamps with the upload time, get their real capture time. Each file's modified date is also set to the capture time.
 - **Only new items on re-runs.** A small manifest in the output folder remembers what was saved, so you can run the same command again later to pick up new photos.
 - **Safe to interrupt.** Ctrl+C stops cleanly, and re-running continues where it stopped.
 - **Nice terminal output.** Colors, a live progress bar with speed and ETA, parallel downloads and automatic retries.
@@ -76,6 +77,7 @@ shared-album-dl '<link>' --only "Jane" --videos
 | `--photos` / `--videos` | Only photos / only videos. |
 | `--since <YYYY-MM-DD>` / `--until <YYYY-MM-DD>` | Filter by capture date. |
 | `--tz <zone>` | IANA time zone for `{date}`/`{time}`, e.g. `America/Los_Angeles` (default: your computer's). |
+| `--no-fix-dates` | Don't write capture dates into files. |
 | `-j, --concurrency <n>` | Parallel downloads, 1–32 (default: 6). |
 | `-n, --dry-run` | Show the plan without downloading. |
 | `--force` | Re-download items that were already saved. |
@@ -118,8 +120,9 @@ The extension is added for you, and `/` creates sub-folders. If two items would 
 
 | | Preserved |
 |---|---|
-| **Photos** | The original bytes, untouched: GPS location, camera and lens, ISO, aperture, shutter speed, and capture time with its time-zone offset. Google Photos reads all of these. |
-| **Videos** | Capture date. Apple re-encodes shared-album videos to **720p** and **removes GPS and camera info** before sharing, so that information isn't available to download. |
+| **Photos with EXIF** | The original bytes, untouched: GPS location, camera and lens, ISO, aperture, shutter speed, and capture time with its time-zone offset. Google Photos reads all of these. |
+| **Photos without EXIF** | Images saved from WhatsApp or Messages before being shared often have no metadata at all. `DateTimeOriginal` and its offset are added from the album's capture time, and any other existing tags are kept. There's no location to recover. |
+| **Videos** | Apple re-encodes shared-album videos to **720p**, **removes GPS and camera info**, and stamps them with the upload time. The real capture time is written back into the QuickTime headers (`mvhd`/`tkhd`/`mdhd`). Only those date fields change, never the video data or file size. |
 | **Album-only info** | Uploader, date added to the album, and caption. These aren't stored inside the files, so they're saved in `.shared-album-dl.json` in the output folder. |
 
 iCloud Shared Albums store reduced-size copies (photos around 4 MP, e.g. 2731×1537, and videos up to 720p), not the full originals. That's an Apple limitation, and no tool can get better quality from a shared album.
@@ -130,7 +133,8 @@ It uses the same unauthenticated `sharedstreams` API that the iCloud.com shared-
 
 1. `POST /webstream` returns the album name and each item's metadata, including the uploader and the available sizes.
 2. `POST /webasseturls` (in batches of 25) returns temporary download URLs.
-3. For each item it chooses the largest version (for videos, the video stream rather than the poster image) and downloads it to a `.part` file, which is renamed when complete.
+3. For each item it chooses the largest version (for videos, the video stream rather than the poster image) and downloads it to a `.part` file.
+4. It writes the capture date into the file where needed (see above), using built-in JPEG/EXIF and MP4 code with no exiftool required, then renames the file into place.
 
 No Apple ID or login is needed, and nothing is uploaded anywhere.
 

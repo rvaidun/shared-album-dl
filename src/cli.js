@@ -4,6 +4,7 @@ import { resolve, join, relative, isAbsolute } from 'node:path';
 import { fetchAlbum, parseToken } from './api.js';
 import { PRESETS, TOKENS, nameMatches, renderName, resolveTemplate } from './naming.js';
 import { Manifest, cleanupParts, downloadTo, planPaths, pool } from './download.js';
+import { writeCaptureDate } from './metadata.js';
 import { c, ce, sym, bytes, duration, table, Spinner, Progress } from './ui.js';
 
 const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
@@ -32,6 +33,7 @@ ${c.bold('Download options')}
   ${c.yellow('    --until')} <date>       Only items captured on/before date
   ${c.yellow('    --tz')} <zone>          Time zone for {date}/{time}, e.g. Pacific/Honolulu
                           ${c.dim('(default: this computer\'s zone)')}
+  ${c.yellow('    --no-fix-dates')}       Don't write capture dates into files (see below)
   ${c.yellow('-j, --concurrency')} <n>    Parallel downloads ${c.dim('(default: 6)')}
   ${c.yellow('-n, --dry-run')}            Show what would be downloaded, don't download
   ${c.yellow('    --force')}              Re-download even if already saved
@@ -39,6 +41,11 @@ ${c.bold('Download options')}
   ${c.yellow('-v, --verbose')}            Print every file as it finishes
   ${c.yellow('-h, --help')}               Show this help
   ${c.yellow('    --version')}            Show version
+
+${c.bold('Dates')}
+  Photos without a "date taken" get one from the album, and videos (which Apple
+  stamps with the upload time) get their real capture time, so Google Photos sorts
+  them correctly. Photos that already have EXIF dates are never modified.
 
 ${c.bold('Environment')}
   ${c.yellow(ENV_EXCLUDE)}   Comma-separated names to always exclude (e.g. yourself)
@@ -211,6 +218,7 @@ async function cmdDownload(argv) {
         since: { type: 'string' },
         until: { type: 'string' },
         tz: { type: 'string' },
+        'no-fix-dates': { type: 'boolean' },
         concurrency: { type: 'string', short: 'j', default: '6' },
         'dry-run': { type: 'boolean', short: 'n' },
         force: { type: 'boolean' },
@@ -321,6 +329,7 @@ async function cmdDownload(argv) {
   const active = new Set();
   const failures = [];
   let saved = 0;
+  let datesFixed = 0;
 
   const onSigint = () => {
     controller.abort();
@@ -345,6 +354,11 @@ async function cmdDownload(argv) {
         signal: controller.signal,
         mtime: p.item.created,
         onBytes: (n) => progress.addBytes(n),
+        beforeRename: o['no-fix-dates']
+          ? undefined
+          : async (part) => {
+              if (await writeCaptureDate(part, p.item.ext, p.item.created, o.tz)) datesFixed++;
+            },
       });
       manifest.record(p.item.guid, recordFor(p));
       manifest.save();
@@ -371,6 +385,9 @@ async function cmdDownload(argv) {
       `(${bytes(progress.bytes)} in ${duration(secs)}, ${bytes(progress.bytes / Math.max(secs, 0.001))}/s)`,
     )}`,
   );
+  if (datesFixed) {
+    console.log(`  ${c.cyan(sym.bullet)} ${c.dim(`Wrote capture dates into ${datesFixed} file${datesFixed === 1 ? '' : 's'}`)}`);
+  }
   if (failures.length) {
     console.log(`  ${c.err(sym.fail)} ${c.red(`${failures.length} failed`)} ${c.dim('— run again to retry them')}`);
   }

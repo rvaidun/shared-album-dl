@@ -80,7 +80,7 @@ class HttpError extends Error {
 }
 
 /** Stream a URL to disk via a .part file, retrying transient failures. */
-export async function downloadTo(url, dest, { onBytes = () => {}, signal, retries = 3, mtime } = {}) {
+export async function downloadTo(url, dest, { onBytes = () => {}, signal, retries = 3, mtime, beforeRename } = {}) {
   const part = dest + '.part';
   await mkdir(dirname(dest), { recursive: true });
   for (let attempt = 0; ; attempt++) {
@@ -96,6 +96,7 @@ export async function downloadTo(url, dest, { onBytes = () => {}, signal, retrie
         },
       });
       await pipeline(Readable.fromWeb(res.body), counter, createWriteStream(part), { signal });
+      if (beforeRename) await beforeRename(part);
       await rename(part, dest);
       if (mtime && !Number.isNaN(mtime.getTime())) await utimes(dest, mtime, mtime).catch(() => {});
       return written;
