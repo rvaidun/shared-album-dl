@@ -1,0 +1,16 @@
+{
+  "name": "shared-album-dl",
+  "version": "0.1.0",
+  "description": "Download iCloud Shared Albums, keeping the uploader in each file name and skipping your own uploads.",
+  "type": "module",
+  "bin": {
+    "shared-album-dl": "bin/shared-album-dl.js"
+  },
+  "scripts": {
+    "test": "node --test"
+  },
+  "engines": {
+    "node": ">=22.13"
+  },
+  "license": "MIT"
+}
